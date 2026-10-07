@@ -1,0 +1,31 @@
+schema_version = "1.0.0"
+
+id = "real_terrain_generator"
+version = "0.1.0"
+name = "Real Terrain Generator"
+tagline = "Generate 3D terrains from real-world Digital Elevation Models (DEM)"
+maintainer = "Miguel Diaz de Leon-Munoz <migueldlm1307@gmail.com>"
+type = "add-on"
+
+tags = ["Add Mesh", "Modeling", "Terrain"]
+
+blender_version_min = "4.2.0"
+
+description = """
+Real Terrain Generator creates accurate 3D terrains and 16-bit heightmaps from real-world elevation data:
+- Global DEM elevation query powered by AWS Terrain Tiles (Terrarium) with zero API keys required.
+- Geocoding place name search (Nominatim / OpenStreetMap) to easily locate mountains, valleys, and landmarks.
+- Coordinate input (Latitude / Longitude) and metric area selection (width, length, scale in km).
+- 16-bit Grayscale heightmap generation (eliminating 8-bit terracing artifacts).
+- Displace modifier, Geometry Nodes, or direct metric BMesh generation.
+- Slope, Elevation, and Curvature masks designed to drive procedural vegetation and plant distribution.
+- Architecture ready for OpenTopography, Mapbox, and USGS 3DEP providers.
+"""
+
+license = ["SPDX:GPL-3.0-or-later"]
+
+platforms = ["windows-x64", "macos-arm64", "macos-x64", "linux-x64"]
+
+[permissions]
+network = "Fetch elevation tiles from AWS Open Data and geocoding services"
+files = "Cache downloaded elevation tiles and save 16-bit heightmaps"

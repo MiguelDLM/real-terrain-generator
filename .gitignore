@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Terrain and DEM cache
+cache/
+*.tif
+*.tiff
+temp_*.png
+temp_*.exr
+
+# Blender
+*.blend
+*.blend1
+*.blend2
+
+# IDEs & OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*.swo
+.env
