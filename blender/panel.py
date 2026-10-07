@@ -9,6 +9,7 @@ except ImportError:
     BLENDER_AVAILABLE = False
 
 from ..core.geo import meters_per_pixel
+from .preferences import get_opentopography_key
 
 
 if BLENDER_AVAILABLE:
@@ -81,8 +82,19 @@ if BLENDER_AVAILABLE:
             box_source.prop(props, "provider", text="")
 
             if props.provider == "OPENTOPOGRAPHY":
-                box_source.prop(props, "opentopography_api_key")
-                box_source.operator("wm.url_open", text="Get Free API Key", icon='URL').url = "https://portal.opentopography.org/"
+                box_source.prop(props, "opentopography_dataset")
+                api_key = get_opentopography_key(context)
+                if api_key:
+                    box_source.label(text="✓ API Key configured", icon='CHECKMARK')
+                    box_source.prop(props, "opentopography_api_key", text="Session Key (Optional)")
+                else:
+                    box_source.label(text="⚠️ API Key required", icon='ERROR')
+                    box_source.prop(props, "opentopography_api_key", text="API Key")
+
+                row_actions = box_source.row(align=True)
+                row_actions.operator("rtg.open_preferences", text="Settings Menu", icon='PREFERENCES')
+                row_actions.operator("wm.url_open", text="Get Free Key", icon='URL').url = "https://portal.opentopography.org/myopentopo"
+
             elif props.provider == "AWS_TERRARIUM":
                 box_source.label(text="✓ Public AWS S3 (No API Key Required)", icon='CHECKMARK')
 

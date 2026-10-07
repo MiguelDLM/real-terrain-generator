@@ -22,11 +22,12 @@ except ImportError:
     BLENDER_AVAILABLE = False
 
 if BLENDER_AVAILABLE:
+    from .blender.preferences import RTG_AddonPreferences
     from .blender.properties import RTG_Properties
     from .blender.operators import OPERATOR_CLASSES
     from .blender.panel import PANEL_CLASSES
 
-    classes = (RTG_Properties,) + OPERATOR_CLASSES + PANEL_CLASSES
+    classes = (RTG_AddonPreferences, RTG_Properties) + OPERATOR_CLASSES + PANEL_CLASSES
 
     def register():
         for cls in classes:

@@ -133,10 +133,23 @@ if BLENDER_AVAILABLE:
         )
 
         opentopography_api_key: StringProperty(
-            name="OpenTopography Key",
-            description="API Key from https://portal.opentopography.org/",
+            name="OpenTopography Key (Override)",
+            description="API Key override (leave empty to use key from Preferences)",
             subtype='PASSWORD',
             default="",
+        )
+
+        opentopography_dataset: EnumProperty(
+            name="Dataset",
+            description="OpenTopography DEM Dataset",
+            items=[
+                ("COP30", "Copernicus GLO-30 (30m, Recommended)", "Global 30m DSM by ESA"),
+                ("AW3D30", "ALOS World 3D (30m)", "Global 30m DSM by JAXA"),
+                ("SRTMGL1", "NASA SRTM (30m)", "NASA Shuttle Radar Topography Mission 30m"),
+                ("SRTMGL3", "NASA SRTM (90m)", "NASA Shuttle Radar Topography Mission 90m"),
+                ("NASADEM", "NASADEM Global (30m)", "Reprocessed SRTM with ASTER GDEM void fill"),
+            ],
+            default="COP30",
         )
 
         # Integration with Procedural Plant Generator

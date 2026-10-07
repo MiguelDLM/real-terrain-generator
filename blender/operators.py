@@ -24,6 +24,7 @@ from ..core.dem_sources.mapbox_rgb import MapboxRGBProvider
 from ..core.dem_sources.usgs_3dep import USGS3DEPProvider
 from ..core.heightmap import save_heightmap_png16
 from ..core.mesh_builder import build_terrain_mesh_data
+from .preferences import get_opentopography_key, get_addon_preferences
 
 
 if BLENDER_AVAILABLE:
@@ -96,25 +97,34 @@ if BLENDER_AVAILABLE:
         def execute(self, context):
             props = context.scene.rtg_properties
 
+            # Resolve Cache directory from preferences if set
+            prefs = get_addon_preferences(context)
+            if prefs and prefs.cache_directory.strip():
+                cache_dir = Path(prefs.cache_directory.strip())
+            else:
+                cache_dir = Path(tempfile.gettempdir()) / "real_terrain_generator_cache"
+
             # Select Provider
             if props.provider == "AWS_TERRARIUM":
                 provider = AWSTerrariumProvider()
             elif props.provider == "OPENTOPOGRAPHY":
-                if not props.opentopography_api_key.strip():
-                    self.report({'ERROR'}, "OpenTopography requires an API Key. Please provide it in settings.")
+                api_key = get_opentopography_key(context)
+                if not api_key:
+                    self.report(
+                        {'ERROR'},
+                        "OpenTopography requires an API Key. Please enter it in the panel below or in Preferences > Add-ons > Real Terrain Generator."
+                    )
                     return {'CANCELLED'}
-                provider = OpenTopographyProvider(api_key=props.opentopography_api_key.strip())
+                dataset = props.opentopography_dataset or (prefs.default_opentopo_dataset if prefs else "COP30")
+                provider = OpenTopographyProvider(api_key=api_key, dem_type=dataset)
             elif props.provider == "MAPBOX":
-                self.report({'ERROR'}, "Mapbox provider is planned for a future update. Use AWS Terrain Tiles.")
+                self.report({'ERROR'}, "Mapbox provider is planned for a future update. Use AWS Terrain Tiles or OpenTopography.")
                 return {'CANCELLED'}
             elif props.provider == "USGS_3DEP":
-                self.report({'ERROR'}, "USGS 3DEP is planned for a future update. Use AWS Terrain Tiles.")
+                self.report({'ERROR'}, "USGS 3DEP direct ingestion is planned for a future update. Use AWS Terrain Tiles.")
                 return {'CANCELLED'}
             else:
                 provider = AWSTerrariumProvider()
-
-            # Cache directory
-            cache_dir = Path(tempfile.gettempdir()) / "real_terrain_generator_cache"
 
             # Compute Geographic Bounding Box
             bbox = bbox_from_center(
@@ -212,10 +222,23 @@ if BLENDER_AVAILABLE:
             return {'FINISHED'}
 
 
+    class RTG_OT_OpenPreferences(bpy.types.Operator):
+        """Open Real Terrain Generator add-on preferences to manage API keys and storage."""
+        bl_idname = "rtg.open_preferences"
+        bl_label = "Settings / API Keys"
+        bl_options = {'REGISTER'}
+
+        def execute(self, context):
+            bpy.ops.screen.userpref_show('INVOKE_DEFAULT')
+            context.preferences.active_section = 'ADDONS'
+            return {'FINISHED'}
+
+
     OPERATOR_CLASSES = (
         RTG_OT_SearchLocation,
         RTG_OT_AutoZoom,
         RTG_OT_GenerateTerrain,
+        RTG_OT_OpenPreferences,
     )
 else:
     OPERATOR_CLASSES = ()

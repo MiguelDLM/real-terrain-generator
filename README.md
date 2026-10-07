@@ -56,18 +56,25 @@ Diseñada especialmente como el complemento geográfico ideal para **Procedural 
 
 ---
 
+### ✅ Opción B: OpenTopography Global DEM API — *IMPLEMENTADA Y ACTIVA*
+* **Endpoint:** `https://portal.opentopography.org/API/globaldem`
+* **Autenticación:** Requiere API Key gratuita registrada en [portal.opentopography.org](https://portal.opentopography.org/myopentopo).
+* **Configuración de la API Key:**
+  * **Desde el menú de Ajustes:** `Edit > Preferences > Add-ons > Real Terrain Generator > OpenTopography API Key`.
+  * **O directamente desde el panel 3D:** En la sección *DEM Provider*, al seleccionar OpenTopography aparece el botón *"Settings Menu"* y un campo para introducir o sobrescribir la clave en la sesión.
+* **Formatos:** Descarga en formato **AAIGrid (Arc ASCII Grid)** nativo, garantizando compatibilidad multiplataforma sin depender de librerías externas de C (como GDAL).
+* **Catálogos soportados:**
+  * `COP30` (Copernicus DEM 30m de la ESA): El modelo global más preciso y moderno (por defecto).
+  * `AW3D30` (ALOS World 3D de JAXA, 30m).
+  * `SRTMGL1` (SRTM 30m de NASA).
+  * `SRTMGL3` (SRTM 90m de NASA).
+  * `NASADEM` (NASADEM Global 30m).
+
+---
+
 ### 📝 Notas de Arquitectura para Futuras Opciones
 
 El código está estructurado con una clase base abstracta `DEMProvider` en [`core/dem_sources/base.py`](file:///home/miguel/Documents/software/real-terrain-generator/core/dem_sources/base.py), lo que permite incorporar fácilmente los siguientes proveedores:
-
-#### 1. Opción B: OpenTopography Global DEM API ([`core/dem_sources/opentopography.py`](file:///home/miguel/Documents/software/real-terrain-generator/core/dem_sources/opentopography.py))
-* **Ventajas:** Permite descargar directamente cajas delimitadoras (*Bounding Boxes*) exactas en GeoTIFF o AAIGrid sin necesidad de coser teselas. Acceso a los catálogos satelitales más modernos:
-  * `COP30` (Copernicus DEM 30m de la ESA): Muy superior a SRTM en zonas polares y montañas escarpadas.
-  * `AW3D30` (ALOS World 3D de JAXA, 30m).
-  * `SRTMGL1` (SRTM 30m de NASA).
-  * Datasets LiDAR de 1 metro en EE.UU., Nueva Zelanda y partes de Europa.
-* **Requisitos:** Requiere una clave de API gratuita creada en [portal.opentopography.org](https://portal.opentopography.org/).
-* **Endpoint:** `https://portal.opentopography.org/API/globaldem`
 
 #### 2. Opción C: Mapbox Terrain-RGB ([`core/dem_sources/mapbox_rgb.py`](file:///home/miguel/Documents/software/real-terrain-generator/core/dem_sources/mapbox_rgb.py))
 * **Ventajas:** Cobertura global homogénea y pre-filtrada en proyección Web Mercator con precisión vertical de 0.1 metros (10 cm).
