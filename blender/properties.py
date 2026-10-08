@@ -73,6 +73,14 @@ if BLENDER_AVAILABLE:
         from .operators import update_active_material_quick
         update_active_material_quick(context)
 
+    def _on_sun_updated(self, context):
+        from .scene_setup import update_sky
+        update_sky(context.scene, self.sun_elevation_deg, self.sun_azimuth_deg, self.sky_aerosols)
+
+    def _on_haze_updated(self, context):
+        from .operators import update_active_haze_quick
+        update_active_haze_quick(context)
+
     ROCK_ITEMS = [(key, p.label, f"{p.rock_class.capitalize()}, weathers {p.weathering}") for key, p in ROCK_PROFILES.items()]
 
     class RTG_Properties(bpy.types.PropertyGroup):
@@ -416,6 +424,82 @@ if BLENDER_AVAILABLE:
             ],
             default="PREVIEW",
             update=_on_quality_updated,
+        )
+
+        # Scene & render (scene-wide, not stored per terrain)
+        sun_elevation_deg: FloatProperty(
+            name="Sun Elevation",
+            description="Sun height above the horizon in degrees (low sun = long shadows and warm light)",
+            default=25.0,
+            min=-5.0,
+            max=90.0,
+            update=_on_sun_updated,
+        )
+
+        sun_azimuth_deg: FloatProperty(
+            name="Sun Azimuth",
+            description="Compass direction of the sun in degrees (0 north, 90 east, 180 south, 270 west)",
+            default=225.0,
+            min=0.0,
+            max=360.0,
+            update=_on_sun_updated,
+        )
+
+        sun_day: IntProperty(
+            name="Day",
+            description="Day of the year (1 = Jan 1, 172 = Jun 21, 355 = Dec 21) for Sun from Time",
+            default=172,
+            min=1,
+            max=365,
+        )
+
+        sun_hour: FloatProperty(
+            name="Hour",
+            description="Local solar time for Sun from Time (12 = solar noon)",
+            default=16.5,
+            min=0.0,
+            max=24.0,
+            precision=2,
+        )
+
+        sky_aerosols: FloatProperty(
+            name="Sky Haze",
+            description="Dust and water droplets in the sky (1 = clear, 3-5 = humid or hazy, 10 = polluted)",
+            default=1.5,
+            min=0.0,
+            max=10.0,
+            update=_on_sun_updated,
+        )
+
+        aerial_perspective: BoolProperty(
+            name="Aerial Perspective",
+            description="Haze volume around the terrain: distant ridges fade and turn blue (real visibility at any scale; adds render time)",
+            default=True,
+        )
+
+        haze_visibility_km: FloatProperty(
+            name="Visibility (km)",
+            description="Distance at which the haze hides a ridge (clear air 50-100 km, humid tropics 10-20 km, mist 1-5 km)",
+            default=30.0,
+            min=0.5,
+            max=300.0,
+            update=_on_haze_updated,
+        )
+
+        place_camera: BoolProperty(
+            name="Place Camera",
+            description="Create or move the RTG_Camera to an oblique view along the terrain with the sun to the side",
+            default=True,
+        )
+
+        render_preset: EnumProperty(
+            name="Render",
+            description="Cycles sampling and terrain texture detail applied by Setup Scene",
+            items=[
+                ("PREVIEW", "Preview", "128 samples, Preview material quality: quick test renders"),
+                ("FINAL", "Final", "512 samples with denoising, Final material quality"),
+            ],
+            default="FINAL",
         )
 
         masks_as_vertex_groups: BoolProperty(

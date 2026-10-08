@@ -177,3 +177,30 @@ def estimate_climate_lines(lat_deg: float) -> Tuple[float, float]:
     else:
         treeline = max(0.0, 3500.0 - (a - 30.0) * 87.5)
     return treeline, treeline + 800.0
+
+
+def solar_position(lat_deg: float, day_of_year: int, solar_hour: float) -> Tuple[float, float]:
+    """Sun elevation and compass azimuth (degrees, 0 = north, 90 = east) at local solar time.
+
+    Simple declination model (Cooper 1969): accurate to about a degree, enough to light
+    a scene. ``solar_hour`` is apparent solar time, so 12.0 is always solar noon.
+    """
+    phi = math.radians(lat_deg)
+    decl = math.radians(23.44) * math.sin(2.0 * math.pi * (284 + day_of_year) / 365.0)
+    hour_angle = math.radians(15.0 * (solar_hour - 12.0))
+    sin_el = math.sin(phi) * math.sin(decl) + math.cos(phi) * math.cos(decl) * math.cos(hour_angle)
+    elevation = math.degrees(math.asin(max(-1.0, min(1.0, sin_el))))
+    azimuth = math.degrees(math.atan2(
+        math.sin(hour_angle),
+        math.cos(hour_angle) * math.sin(phi) - math.tan(decl) * math.cos(phi),
+    )) + 180.0
+    return elevation, azimuth % 360.0
+
+
+def haze_extinction_per_m(visibility_km: float) -> float:
+    """Extinction coefficient (1/m) of air with this meteorological visibility.
+
+    Koschmieder's law: contrast falls to 2% at the visibility distance, so
+    extinction = ln(50) / visibility ≈ 3.912 / visibility.
+    """
+    return math.log(50.0) / (max(visibility_km, 0.01) * 1000.0)

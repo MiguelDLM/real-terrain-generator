@@ -81,6 +81,15 @@ Atributos de malla disponibles para Shader y Geometry Nodes: `RTG_Rock_Color`, `
 
 ---
 
+## 🌅 Escena y Render Realista
+
+En el subpanel **Scene & Render**, **Setup Realistic Scene** prepara la escena alrededor del terreno seleccionado:
+
+* **Cielo físico** (mundo `RTG Sky`, *Multiple Scattering* en Blender 5.0+, Nishita antes): su disco solar ilumina la escena, así que las lámparas Sun existentes se ocultan para no duplicar la luz. El mundo anterior se conserva. El sol se coloca por **elevación** y **azimut de brújula** (0 norte, 90 este, igual que los ejes +Y norte / +X este del terreno), o con **Sun from Time** a partir de la latitud, el día del año y la hora solar. *Sky Haze* controla el polvo y la humedad del cielo.
+* **Perspectiva aérea**: caja de bruma (`RTG_Atmosphere_*`) cuya densidad sale de la **visibilidad** en km (ley de Koschmieder, extinción = 3.912 / visibilidad) convertida a unidades de escena: las crestas lejanas se aclaran y azulan a la distancia real, sea cual sea la escala. Trópico húmedo 10–20 km, aire limpio 50–100 km.
+* **Cámara** (`RTG_Camera`): vista aérea oblicua desde un extremo del terreno, a lo largo de su eje largo y con el sol de lado (la luz lateral muestra el relieve; la frontal lo aplana). Sin profundidad de campo: con un terreno a escala reducida, el desenfoque físico da aspecto de maqueta.
+* **Render**: *Preview* (128 muestras) o *Final* (512 muestras con muestreo adaptativo y denoise, material en calidad Final), y AgX *Medium High Contrast*.
+
 ## 🔗 Integración con Procedural Plant Generator
 
 Real Terrain Generator prepara el terreno (relieve, geología, rocas, agua) y Procedural Plant Generator pone las plantas. El reparto de la PPG Forest lee la geometría **evaluada** del terreno (*Object Info*), así que todo lo que añade el modificador *Cliff Detail* (contrafuertes, repisas) recibe plantas con la orientación correcta.

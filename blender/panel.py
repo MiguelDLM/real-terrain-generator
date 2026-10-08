@@ -353,6 +353,36 @@ if BLENDER_AVAILABLE:
                 col.label(text="Macrostrat (CC-BY 4.0)", icon='COPY_ID')
 
 
+    class RTG_PT_Scene(RTG_PanelBase, bpy.types.Panel):
+        """Sky, sun, haze, camera and render settings for a realistic render."""
+        bl_label = "Scene & Render"
+        bl_idname = "RTG_PT_Scene"
+        bl_parent_id = "RTG_PT_MainPanel"
+        bl_options = {'DEFAULT_CLOSED'}
+
+        def draw(self, context):
+            layout = self.layout
+            props = context.scene.rtg_properties
+
+            col = layout.column(align=True)
+            col.prop(props, "sun_elevation_deg")
+            col.prop(props, "sun_azimuth_deg")
+            row = layout.row(align=True)
+            row.prop(props, "sun_day")
+            row.prop(props, "sun_hour")
+            row.operator("rtg.sun_from_time", text="", icon='TIME')
+            layout.prop(props, "sky_aerosols")
+
+            layout.separator()
+            layout.prop(props, "aerial_perspective")
+            sub = layout.column()
+            sub.enabled = props.aerial_perspective
+            sub.prop(props, "haze_visibility_km")
+            layout.prop(props, "place_camera")
+            layout.row().prop(props, "render_preset", expand=True)
+            layout.operator("rtg.setup_scene", icon='WORLD')
+
+
     PANEL_CLASSES = (
         RTG_PT_MainPanel,
         RTG_PT_DataFetch,
@@ -360,6 +390,7 @@ if BLENDER_AVAILABLE:
         RTG_PT_ScaleOptions,
         RTG_PT_Vegetation,
         RTG_PT_Geology,
+        RTG_PT_Scene,
     )
 else:
     PANEL_CLASSES = ()

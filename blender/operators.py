@@ -22,6 +22,7 @@ from ..core.geo import (
     recommend_zoom_for_area,
     haversine_distance_m,
     estimate_climate_lines,
+    solar_position,
 )
 from ..core.dem_sources.base import ElevationGrid
 from ..core.geocoding import search_location
@@ -46,6 +47,10 @@ from .terrain_detail import apply_terrain_detail, update_detail_scale
 from .materials import set_material_water_level
 from .water import ensure_water_object, write_water_mesh, set_flow_direction, find_water, set_volume_mode
 from .rocks import ensure_rocks, find_rocks, update_rocks
+from .scene_setup import (
+    ensure_sky, update_sky, hide_sun_lamps, ensure_atmosphere, remove_atmosphere, find_atmosphere,
+    set_haze_visibility, place_camera, apply_render_preset,
+)
 from ..core.water import build_water_mesh, close_water_volume, estimate_water_level, estimate_flow_azimuth
 from ..core.geology import plan_surface_terms
 from .properties import TERRAIN_SETTINGS
@@ -566,6 +571,13 @@ def update_active_material_quick(context):
         store_settings_on_object(obj, props)
 
 
+def update_active_haze_quick(context):
+    obj = get_active_terrain(context)
+    atmosphere = find_atmosphere(obj) if obj else None
+    if atmosphere is not None:
+        set_haze_visibility(atmosphere, context.scene.rtg_properties.haze_visibility_km, obj.get("rtg_bu_per_m", 1.0))
+
+
 def adjust_viewport_and_cameras(context, max_dimension_units: float):
     """Ensure 3D Viewport spaces and the active camera clip far enough to show the terrain."""
     required_clip = max(1000.0, float(max_dimension_units) * 3.0)
@@ -973,6 +985,62 @@ if BLENDER_AVAILABLE:
             return {'FINISHED'}
 
 
+    class RTG_OT_SunFromTime(bpy.types.Operator):
+        """Place the sun for the terrain's latitude, day of the year and local solar time"""
+        bl_idname = "rtg.sun_from_time"
+        bl_label = "Sun from Time"
+        bl_options = {'REGISTER', 'UNDO'}
+
+        def execute(self, context):
+            props = context.scene.rtg_properties
+            elevation, azimuth = solar_position(props.latitude, props.sun_day, props.sun_hour)
+            props.sun_elevation_deg = max(elevation, -5.0)
+            props.sun_azimuth_deg = azimuth
+            if elevation < 0.0:
+                self.report({'WARNING'}, f"The sun is below the horizon ({elevation:.1f}°) at that time")
+            return {'FINISHED'}
+
+
+    class RTG_OT_SetupScene(bpy.types.Operator):
+        """Physical sky with the sun, aerial-perspective haze, a landscape camera and render settings for the selected terrain"""
+        bl_idname = "rtg.setup_scene"
+        bl_label = "Setup Realistic Scene"
+        bl_options = {'REGISTER', 'UNDO'}
+
+        @classmethod
+        def poll(cls, context):
+            return get_active_terrain(context) is not None
+
+        def execute(self, context):
+            props = context.scene.rtg_properties
+            scene = context.scene
+            terrain = get_active_terrain(context)
+            bu_per_m = terrain.get("rtg_bu_per_m", 1.0)
+
+            ensure_sky(scene)
+            update_sky(scene, props.sun_elevation_deg, props.sun_azimuth_deg, props.sky_aerosols,
+                       altitude_m=terrain.get("rtg_elevation_min_m", 0.0))
+            hidden = hide_sun_lamps(scene)
+
+            camera = place_camera(context, terrain, props.sun_azimuth_deg) if props.place_camera else scene.camera
+            if props.aerial_perspective:
+                top_z = camera.matrix_world.translation.z if camera else terrain.matrix_world.translation.z
+                ensure_atmosphere(scene, terrain, props.haze_visibility_km, bu_per_m, top_z)
+            else:
+                remove_atmosphere(terrain)
+
+            apply_render_preset(scene, props.render_preset)
+            if props.create_material and props.material_quality != props.render_preset:
+                props.material_quality = props.render_preset
+            adjust_viewport_and_cameras(context, max(terrain.dimensions.x, terrain.dimensions.y))
+
+            message = "Scene ready"
+            if hidden:
+                message += f"; hid {hidden} sun lamp(s), the sky has its own sun"
+            self.report({'INFO'}, message)
+            return {'FINISHED'}
+
+
     class RTG_OT_ExitMaskView(bpy.types.Operator):
         """Stop showing the mask heatmap and restore the viewport shading"""
         bl_idname = "rtg.exit_mask_view"
@@ -1124,6 +1192,8 @@ if BLENDER_AVAILABLE:
         RTG_OT_ScatterRocks,
         RTG_OT_RemoveRocks,
         RTG_OT_EstimateClimateLines,
+        RTG_OT_SunFromTime,
+        RTG_OT_SetupScene,
         RTG_OT_ExitMaskView,
         RTG_OT_SetActiveMask,
         RTG_OT_ExportHeightmap,
