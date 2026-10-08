@@ -121,9 +121,27 @@ def haversine_distance_m(lat1: float, lon1: float, lat2: float, lon2: float) -> 
     return EARTH_RADIUS_KM * 1000.0 * c
 
 
-def recommend_zoom_for_area(width_km: float, height_km: float) -> int:
-    """Recommend a balanced default zoom level based on the desired area size."""
+def recommend_zoom_for_area(
+    width_km: float,
+    height_km: float,
+    target_resolution: int | None = None,
+    lat_deg: float = 0.0,
+    max_zoom: int = 15,
+) -> int:
+    """Recommend a tile zoom level for the desired area.
+
+    Without ``target_resolution`` a balanced default based on area size is returned.
+    With it, the lowest zoom whose source pixels cover the longest side with at least
+    ``target_resolution`` samples is chosen, so the mesh never upsamples (blurs) the DEM.
+    """
     max_dim = max(width_km, height_km)
+    if target_resolution:
+        for zoom in range(6, max_zoom + 1):
+            source_px = (max_dim * 1000.0) / meters_per_pixel(lat_deg, zoom)
+            if source_px >= target_resolution:
+                return zoom
+        return max_zoom
+
     if max_dim <= 2.0:
         return 14  # High detail (~9.5m/px)
     elif max_dim <= 6.0:
@@ -136,3 +154,26 @@ def recommend_zoom_for_area(width_km: float, height_km: float) -> int:
         return 10  # Broad range (~150m/px)
     else:
         return 9   # Macro landscape
+
+
+def count_tiles_for_area(center_lat: float, center_lon: float, width_km: float, height_km: float, zoom: int) -> int:
+    """Number of Slippy Map tiles needed to cover an area (used to warn about large downloads)."""
+    bbox = bbox_from_center(center_lat, center_lon, width_km, height_km)
+    _, (min_x, max_x, min_y, max_y) = get_tiles_for_bbox(bbox, zoom)
+    return (max_x - min_x + 1) * (max_y - min_y + 1)
+
+
+def estimate_climate_lines(lat_deg: float) -> Tuple[float, float]:
+    """Rough tree line and snow line altitudes (meters) for a latitude.
+
+    Coarse global trend (Körner & Paulsen 2004): the tree line stays near 3500 m
+    between the tropics and ~30°, then drops towards sea level near 70°. The
+    seasonal snow line is taken ~800 m above it. Continentality and local climate
+    shift these by hundreds of meters, so they are only starting values.
+    """
+    a = abs(lat_deg)
+    if a <= 30.0:
+        treeline = 3500.0
+    else:
+        treeline = max(0.0, 3500.0 - (a - 30.0) * 87.5)
+    return treeline, treeline + 800.0

@@ -12,6 +12,7 @@ Requires ZERO API keys or registration.
 from __future__ import annotations
 import math
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 import urllib.error
 from pathlib import Path
 from typing import Optional, Tuple, List
@@ -30,6 +31,7 @@ from .base import DEMProvider, ElevationGrid
 
 DEFAULT_USER_AGENT = "RealTerrainGenerator/0.1.0 (Blender Extension; +https://github.com/user/real-terrain-generator)"
 TERRARIUM_URL_TEMPLATE = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"
+MAX_PARALLEL_DOWNLOADS = 8
 
 
 def decode_terrarium_elevation(rgb_array: np.ndarray) -> np.ndarray:
@@ -45,14 +47,15 @@ def decode_terrarium_elevation(rgb_array: np.ndarray) -> np.ndarray:
     return elevation
 
 
-def resample_grid_bilinear(grid: np.ndarray, target_size: int) -> np.ndarray:
-    """Resample a 2D float array to (target_size, target_size) using bilinear interpolation in pure NumPy."""
+def resample_grid_bilinear(grid: np.ndarray, target_size: int | Tuple[int, int]) -> np.ndarray:
+    """Resample a 2D float array to ``target_size`` (int for square, or (rows, cols)) with bilinear interpolation."""
+    out_h, out_w = (target_size, target_size) if isinstance(target_size, int) else target_size
     in_h, in_w = grid.shape
-    if in_h == target_size and in_w == target_size:
+    if in_h == out_h and in_w == out_w:
         return grid.copy()
 
-    y_indices = np.linspace(0, in_h - 1, target_size)
-    x_indices = np.linspace(0, in_w - 1, target_size)
+    y_indices = np.linspace(0, in_h - 1, out_h)
+    x_indices = np.linspace(0, in_w - 1, out_w)
 
     y0 = np.floor(y_indices).astype(int)
     y1 = np.clip(y0 + 1, 0, in_h - 1)
@@ -68,6 +71,34 @@ def resample_grid_bilinear(grid: np.ndarray, target_size: int) -> np.ndarray:
     top = wy0 * grid[y0, :][:, x0] * wx0 + wy0 * grid[y0, :][:, x1] * wx1
     bot = wy1 * grid[y1, :][:, x0] * wx0 + wy1 * grid[y1, :][:, x1] * wx1
     return (top + bot).astype(np.float32)
+
+
+def grid_shape_for_resolution(target_resolution: int, width_m: float, height_m: float) -> Tuple[int, int]:
+    """(rows, cols) with ``target_resolution`` samples on the longest side, keeping the area's aspect ratio."""
+    if width_m >= height_m:
+        cols = target_resolution
+        rows = max(2, int(round(target_resolution * height_m / max(1e-6, width_m))))
+    else:
+        rows = target_resolution
+        cols = max(2, int(round(target_resolution * width_m / max(1e-6, height_m))))
+    return rows, cols
+
+
+def resample_elevation(grid: np.ndarray, out_shape: Tuple[int, int]) -> np.ndarray:
+    """Resample elevation to ``out_shape``, box-averaging first when shrinking by 2x or more.
+
+    Plain bilinear point sampling of a much denser DEM aliases (noisy ridges, shimmering
+    slopes); averaging integer blocks first keeps the downsampled relief faithful.
+    """
+    in_h, in_w = grid.shape
+    out_h, out_w = out_shape
+    fy = in_h // out_h
+    fx = in_w // out_w
+    if fy >= 2 or fx >= 2:
+        fy, fx = max(1, fy), max(1, fx)
+        h, w = (in_h // fy) * fy, (in_w // fx) * fx
+        grid = grid[:h, :w].reshape(h // fy, fy, w // fx, fx).mean(axis=(1, 3))
+    return resample_grid_bilinear(grid, (out_h, out_w))
 
 
 class AWSTerrariumProvider(DEMProvider):
@@ -92,7 +123,6 @@ class AWSTerrariumProvider(DEMProvider):
         """Fetch raw PNG bytes for a single tile, consulting cache first."""
         cache_file = None
         if cache_dir:
-            cache_dir.mkdir(parents=True, exist_ok=True)
             cache_file = cache_dir / f"terrarium_{z}_{x}_{y}.png"
             if cache_file.exists():
                 return cache_file.read_bytes()
@@ -130,8 +160,18 @@ class AWSTerrariumProvider(DEMProvider):
         canvas_w = tiles_w * tile_pixel_size
         stitched_elevation = np.zeros((canvas_h, canvas_w), dtype=np.float32)
 
-        for z, x, y in tiles:
-            tile_bytes = self._fetch_tile_bytes(z, x, y, cache_dir=cache_dir)
+        if cache_dir:
+            cache_dir.mkdir(parents=True, exist_ok=True)
+
+        # Downloads are I/O bound: fetch tiles concurrently, decode as they arrive.
+        def fetch(tile):
+            z, x, y = tile
+            return tile, self._fetch_tile_bytes(z, x, y, cache_dir=cache_dir)
+
+        with ThreadPoolExecutor(max_workers=min(MAX_PARALLEL_DOWNLOADS, len(tiles))) as pool:
+            results = list(pool.map(fetch, tiles))
+
+        for (z, x, y), tile_bytes in results:
             rgb = decode_png_rgb(tile_bytes)
             tile_elev = decode_terrarium_elevation(rgb)
 
@@ -167,15 +207,15 @@ class AWSTerrariumProvider(DEMProvider):
 
         cropped = stitched_elevation[c_top:c_bottom, c_left:c_right]
 
-        if target_resolution and (cropped.shape[0] != target_resolution or cropped.shape[1] != target_resolution):
-            elevation_final = resample_grid_bilinear(cropped, target_resolution)
-        else:
-            elevation_final = cropped
-
         # Calculate metric width & height
         center_lat, center_lon = bbox.center
         width_m = haversine_distance_m(center_lat, bbox.min_lon, center_lat, bbox.max_lon)
         height_m = haversine_distance_m(bbox.min_lat, center_lon, bbox.max_lat, center_lon)
+
+        if target_resolution:
+            elevation_final = resample_elevation(cropped, grid_shape_for_resolution(target_resolution, width_m, height_m))
+        else:
+            elevation_final = cropped
 
         min_elev = float(np.min(elevation_final))
         max_elev = float(np.max(elevation_final))
@@ -193,5 +233,6 @@ class AWSTerrariumProvider(DEMProvider):
                 "zoom": zoom,
                 "tiles_count": len(tiles),
                 "tile_grid": (tiles_w, tiles_h),
+                "source_shape": cropped.shape,
             }
         )

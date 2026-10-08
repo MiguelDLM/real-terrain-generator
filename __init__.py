@@ -10,7 +10,7 @@ bl_info = {
     "version": (0, 1, 0),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > Real Terrain",
-    "description": "Generate 3D terrains from real-world elevation data (AWS Terrain Tiles DEM) with botanical masks",
+    "description": "Generate 3D terrains from real-world elevation data with terrain masks for scattering and shading",
     "category": "Add Mesh",
 }
 
@@ -24,7 +24,7 @@ except ImportError:
 if BLENDER_AVAILABLE:
     from .blender.preferences import RTG_AddonPreferences
     from .blender.properties import RTG_Properties
-    from .blender.operators import OPERATOR_CLASSES
+    from .blender.operators import OPERATOR_CLASSES, on_depsgraph_update, menu_export_heightmap
     from .blender.panel import PANEL_CLASSES
 
     classes = (RTG_AddonPreferences, RTG_Properties) + OPERATOR_CLASSES + PANEL_CLASSES
@@ -33,8 +33,13 @@ if BLENDER_AVAILABLE:
         for cls in classes:
             bpy.utils.register_class(cls)
         bpy.types.Scene.rtg_properties = PointerProperty(type=RTG_Properties)
+        bpy.types.TOPBAR_MT_file_export.append(menu_export_heightmap)
+        bpy.app.handlers.depsgraph_update_post.append(on_depsgraph_update)
 
     def unregister():
+        if on_depsgraph_update in bpy.app.handlers.depsgraph_update_post:
+            bpy.app.handlers.depsgraph_update_post.remove(on_depsgraph_update)
+        bpy.types.TOPBAR_MT_file_export.remove(menu_export_heightmap)
         if hasattr(bpy.types.Scene, "rtg_properties"):
             del bpy.types.Scene.rtg_properties
         for cls in reversed(classes):

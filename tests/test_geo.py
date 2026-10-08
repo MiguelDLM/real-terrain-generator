@@ -68,3 +68,20 @@ def test_recommend_zoom():
     assert recommend_zoom_for_area(5.0, 5.0) == 13
     assert recommend_zoom_for_area(10.0, 10.0) == 12
     assert recommend_zoom_for_area(50.0, 50.0) == 10
+
+
+def test_recommend_zoom_matches_mesh_resolution():
+    from core.geo import meters_per_pixel
+    zoom = recommend_zoom_for_area(10.0, 10.0, target_resolution=512, lat_deg=28.0)
+    # Data at the chosen zoom covers 10 km with >= 512 samples, one zoom lower does not
+    assert 10000.0 / meters_per_pixel(28.0, zoom) >= 512
+    assert 10000.0 / meters_per_pixel(28.0, zoom - 1) < 512
+
+
+def test_count_tiles_and_climate_lines():
+    from core.geo import count_tiles_for_area, estimate_climate_lines
+    assert count_tiles_for_area(28.27, -16.64, 10.0, 10.0, 12) >= 1
+    tree_eq, snow_eq = estimate_climate_lines(0.0)
+    tree_alps, _ = estimate_climate_lines(46.0)
+    assert snow_eq > tree_eq > tree_alps > 1500.0
+    assert estimate_climate_lines(-46.0) == estimate_climate_lines(46.0)

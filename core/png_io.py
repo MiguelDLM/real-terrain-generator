@@ -15,20 +15,6 @@ from typing import Tuple
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
 
-def _paeth_predictor(a: int, b: int, c: int) -> int:
-    """Paeth filter predictor for PNG reconstruction."""
-    p = a + b - c
-    pa = abs(p - a)
-    pb = abs(p - b)
-    pc = abs(p - c)
-    if pa <= pb and pa <= pc:
-        return a
-    elif pb <= pc:
-        return b
-    else:
-        return c
-
-
 def decode_png_rgb(png_bytes: bytes) -> np.ndarray:
     """Decode an 8-bit RGB or RGBA PNG from bytes into a NumPy uint8 array of shape (H, W, 3)."""
     if not png_bytes.startswith(PNG_SIGNATURE):
@@ -66,49 +52,74 @@ def decode_png_rgb(png_bytes: bytes) -> np.ndarray:
 
     raw_decompressed = zlib.decompress(b"".join(idat_chunks))
     channels = 3 if color_type == 2 else 4
-    bytes_per_pixel = channels
-    row_bytes = width * bytes_per_pixel
+    bpp = channels
+    row_bytes = width * bpp
     stride = 1 + row_bytes
 
     if len(raw_decompressed) < height * stride:
         raise ValueError("Decompressed PNG stream is shorter than expected")
 
-    recon = bytearray(height * row_bytes)
-    src_idx = 0
+    raw = np.frombuffer(raw_decompressed, dtype=np.uint8, count=height * stride).reshape((height, stride))
+    filters = raw[:, 0]
+    scanlines = raw[:, 1:]
+    recon = np.zeros((height, row_bytes), dtype=np.uint8)
+    prev = np.zeros(row_bytes, dtype=np.uint8)
 
     for r in range(height):
-        filter_type = raw_decompressed[src_idx]
-        src_idx += 1
-        scanline = raw_decompressed[src_idx:src_idx + row_bytes]
-        src_idx += row_bytes
+        line = scanlines[r]
+        filter_type = filters[r]
+        if filter_type == 1:  # Sub: running sum per channel (uint8 wraps mod 256)
+            recon[r] = np.cumsum(line.reshape((width, bpp)), axis=0, dtype=np.uint8).ravel()
+        elif filter_type == 2:  # Up
+            recon[r] = line + prev
+        elif filter_type == 3:  # Average
+            recon[r] = _unfilter_average(line.tobytes(), prev.tobytes(), bpp)
+        elif filter_type == 4:  # Paeth
+            recon[r] = _unfilter_paeth(line.tobytes(), prev.tobytes(), bpp)
+        else:  # None (and unknown filters)
+            recon[r] = line
+        prev = recon[r]
 
-        row_start = r * row_bytes
-        prev_row_start = (r - 1) * row_bytes if r > 0 else None
-
-        for c in range(row_bytes):
-            val = scanline[c]
-            a = recon[row_start + c - bytes_per_pixel] if c >= bytes_per_pixel else 0
-            b = recon[prev_row_start + c] if prev_row_start is not None else 0
-            c_diag = recon[prev_row_start + c - bytes_per_pixel] if (prev_row_start is not None and c >= bytes_per_pixel) else 0
-
-            if filter_type == 0:  # None
-                recon_val = val
-            elif filter_type == 1:  # Sub
-                recon_val = (val + a) & 0xFF
-            elif filter_type == 2:  # Up
-                recon_val = (val + b) & 0xFF
-            elif filter_type == 3:  # Average
-                recon_val = (val + ((a + b) // 2)) & 0xFF
-            elif filter_type == 4:  # Paeth
-                recon_val = (val + _paeth_predictor(a, b, c_diag)) & 0xFF
-            else:
-                recon_val = val
-
-            recon[row_start + c] = recon_val
-
-    img_array = np.frombuffer(recon, dtype=np.uint8).reshape((height, width, channels))
+    img_array = recon.reshape((height, width, channels))
     # Return RGB (discard alpha if present)
     return img_array[:, :, :3]
+
+
+def _unfilter_average(line: bytes, prev: bytes, bpp: int) -> bytearray:
+    out = bytearray(len(line))
+    for i in range(bpp):
+        out[i] = (line[i] + (prev[i] >> 1)) & 0xFF
+    for i in range(bpp, len(line)):
+        out[i] = (line[i] + ((out[i - bpp] + prev[i]) >> 1)) & 0xFF
+    return out
+
+
+def _unfilter_paeth(line: bytes, prev: bytes, bpp: int) -> bytearray:
+    """Paeth reconstruction; inherently sequential, so kept as a tight inlined loop."""
+    out = bytearray(len(line))
+    for i in range(bpp):  # No left neighbour: the predictor reduces to the byte above
+        out[i] = (line[i] + prev[i]) & 0xFF
+    for i in range(bpp, len(line)):
+        a = out[i - bpp]
+        b = prev[i]
+        c = prev[i - bpp]
+        pa = b - c
+        pb = a - c
+        pc = pa + pb
+        if pa < 0:
+            pa = -pa
+        if pb < 0:
+            pb = -pb
+        if pc < 0:
+            pc = -pc
+        if pa <= pb and pa <= pc:
+            pred = a
+        elif pb <= pc:
+            pred = b
+        else:
+            pred = c
+        out[i] = (line[i] + pred) & 0xFF
+    return out
 
 
 def encode_png_gray16(array_uint16: np.ndarray) -> bytes:

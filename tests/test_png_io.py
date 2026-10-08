@@ -43,3 +43,44 @@ def test_encode_png_gray16():
     assert b"IHDR" in png_bytes
     assert b"IDAT" in png_bytes
     assert b"IEND" in png_bytes
+
+
+def _paeth(a, b, c):
+    p = a + b - c
+    pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
+    if pa <= pb and pa <= pc:
+        return a
+    return b if pb <= pc else c
+
+
+def _encode_rgb_with_filters(img: np.ndarray, filters: list[int]) -> bytes:
+    """Reference PNG encoder applying a given filter type per scanline."""
+    import struct, zlib
+    h, w, _ = img.shape
+    bpp = 3
+    rows = img.reshape(h, w * 3).astype(int)
+    raw = bytearray()
+    for r in range(h):
+        cur = rows[r]
+        prev = rows[r - 1] if r > 0 else np.zeros_like(cur)
+        f = filters[r % len(filters)]
+        raw.append(f)
+        for i in range(w * 3):
+            a = cur[i - bpp] if i >= bpp else 0
+            b = prev[i]
+            c = prev[i - bpp] if i >= bpp else 0
+            pred = [0, a, b, (a + b) // 2, _paeth(a, b, c)][f]
+            raw.append((cur[i] - pred) & 0xFF)
+
+    def chunk(tag, data):
+        return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
+
+    ihdr = struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", zlib.compress(bytes(raw))) + chunk(b"IEND", b"")
+
+
+def test_decode_png_rgb_all_filter_types():
+    rng = np.random.default_rng(0)
+    img = rng.integers(0, 256, size=(10, 7, 3), dtype=np.uint8)
+    png = _encode_rgb_with_filters(img, [0, 1, 2, 3, 4])
+    assert np.array_equal(decode_png_rgb(png), img)

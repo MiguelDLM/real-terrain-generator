@@ -61,3 +61,15 @@ def test_terrarium_provider_fetching_and_resampling(tmp_path: Path):
     assert grid.height_m > 1500.0
     assert grid.provider_name == "AWS Terrain Tiles (Terrarium)"
     assert not provider.requires_api_key
+
+
+def test_resampling_keeps_aspect_ratio_and_averages():
+    from core.dem_sources.aws_terrarium import grid_shape_for_resolution, resample_elevation
+    assert grid_shape_for_resolution(256, 20000.0, 10000.0) == (128, 256)
+    assert grid_shape_for_resolution(256, 5000.0, 10000.0) == (256, 128)
+
+    # Checkerboard noise must average out when downsampling 8x instead of aliasing
+    src = np.indices((512, 512)).sum(axis=0) % 2 * 100.0
+    out = resample_elevation(src.astype(np.float32), (64, 64))
+    assert out.shape == (64, 64)
+    assert np.allclose(out, 50.0, atol=1.0)

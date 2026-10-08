@@ -12,14 +12,13 @@ tags = ["Add Mesh", "Modeling", "Terrain"]
 blender_version_min = "4.2.0"
 
 description = """
-Real Terrain Generator creates accurate 3D terrains and 16-bit heightmaps from real-world elevation data:
-- Global DEM elevation query powered by AWS Terrain Tiles (Terrarium) with zero API keys required.
-- Geocoding place name search (Nominatim / OpenStreetMap) to easily locate mountains, valleys, and landmarks.
-- Coordinate input (Latitude / Longitude) and metric area selection (width, length, scale in km).
-- 16-bit Grayscale heightmap generation (eliminating 8-bit terracing artifacts).
-- Displace modifier, Geometry Nodes, or direct metric BMesh generation.
-- Slope, Elevation, and Curvature masks designed to drive procedural vegetation and plant distribution.
-- Architecture ready for OpenTopography, Mapbox, and USGS 3DEP providers.
+Real Terrain Generator creates accurate 3D terrains from real-world elevation data:
+- Free global elevation from AWS Terrain Tiles (no API key) or OpenTopography (Copernicus, ALOS, SRTM).
+- Place name search (Nominatim / OpenStreetMap) and latitude / longitude input with metric area size.
+- Fit-to-size, real 1:1 or map-ratio scale, with live vertical exaggeration.
+- Terrain masks as vertex groups and a color attribute: vegetation, water flow, wetness, scree, snow, ruggedness.
+- Real geology from Macrostrat geologic maps and a procedural rock / soil / snow material (EEVEE and Cycles).
+- 16-bit heightmap export with real-scale metadata (File > Export).
 """
 
 license = ["SPDX:GPL-3.0-or-later"]
@@ -27,5 +26,5 @@ license = ["SPDX:GPL-3.0-or-later"]
 platforms = ["windows-x64", "macos-arm64", "macos-x64", "linux-x64"]
 
 [permissions]
-network = "Fetch elevation tiles from AWS Open Data and geocoding services"
-files = "Cache downloaded elevation tiles and save 16-bit heightmaps"
+network = "Fetch elevation tiles (AWS Open Data, OpenTopography), geologic maps (Macrostrat) and geocoding (Nominatim)"
+files = "Cache downloaded elevation tiles and export 16-bit heightmaps"

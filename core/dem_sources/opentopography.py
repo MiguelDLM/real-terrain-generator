@@ -27,7 +27,7 @@ import numpy as np
 
 from ..geo import BoundingBox, haversine_distance_m
 from .base import DEMProvider, ElevationGrid
-from .aws_terrarium import resample_grid_bilinear
+from .aws_terrarium import grid_shape_for_resolution, resample_elevation
 
 OPENTOPO_URL = "https://portal.opentopography.org/API/globaldem"
 DEFAULT_USER_AGENT = "RealTerrainGenerator/0.1.0 (Blender Extension; +https://github.com/user/real-terrain-generator)"
@@ -204,15 +204,15 @@ class OpenTopographyProvider(DEMProvider):
         ascii_text = self._fetch_aaigrid_text(bbox, cache_dir=cache_dir)
         elevation_arr, header = parse_aaigrid(ascii_text)
 
-        if target_resolution and (elevation_arr.shape[0] != target_resolution or elevation_arr.shape[1] != target_resolution):
-            elevation_final = resample_grid_bilinear(elevation_arr, target_resolution)
-        else:
-            elevation_final = elevation_arr
-
         # Calculate metric real-world dimensions
         center_lat, center_lon = bbox.center
         width_m = haversine_distance_m(center_lat, bbox.min_lon, center_lat, bbox.max_lon)
         height_m = haversine_distance_m(bbox.min_lat, center_lon, bbox.max_lat, center_lon)
+
+        if target_resolution:
+            elevation_final = resample_elevation(elevation_arr, grid_shape_for_resolution(target_resolution, width_m, height_m))
+        else:
+            elevation_final = elevation_arr
 
         min_elev = float(np.min(elevation_final))
         max_elev = float(np.max(elevation_final))
@@ -230,5 +230,6 @@ class OpenTopographyProvider(DEMProvider):
                 "dem_type": self.dem_type,
                 "header": header,
                 "original_shape": elevation_arr.shape,
+                "source_shape": elevation_arr.shape,
             }
         )
