@@ -297,6 +297,13 @@ if BLENDER_AVAILABLE:
 
             if obj:
                 layout.separator()
+                layout.row().prop(props, "water_mode", expand=True)
+                if props.water_mode == "RIVER":
+                    col = layout.column(align=True)
+                    col.prop(props, "river_discharge_m3s")
+                    col.prop(props, "river_min_area_km2")
+                    col.prop(props, "river_roughness")
+                    col.prop(props, "river_through_flow")
                 row = layout.row(align=True)
                 row.prop(props, "water_level_m")
                 row.operator("rtg.estimate_water_level", text="", icon='EYEDROPPER')

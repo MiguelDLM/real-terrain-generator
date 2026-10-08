@@ -114,15 +114,27 @@ Uso en Geometry Nodes: `Named Attribute ("RTG_Plant_Density")` → *Density Fact
 **Escala:** densidades en árboles/ha y separaciones en metros suponen 1 unidad = 1 m. Usa la escala **Real** para escenas con plantas, o convierte con `rtg_bu_per_m`.
 
 ### Agua (ríos, lagos, presas)
-*Water Surface* crea un objeto agua hijo del terreno:
-- **Malla solo donde hay agua.** Se construye a partir de la propia malla del terreno, con un margen que queda oculto bajo la orilla, y guarda la profundidad por vértice (`RTG_Water_Depth`).
-- **Nivel estimado.** El cuentagotas lo fija justo por encima del terreno más bajo, porque SRTM y otros DEM registran la superficie del agua.
-- **Dirección de la corriente.** Se calcula a partir del eje del cauce principal, orientado aguas abajo.
+*Water Surface* crea un objeto agua hijo del terreno. Dos modos:
+- **Lake**: superficie plana al *Water Level* (lagos, embalses, mar). El cuentagotas fija el nivel justo por encima del terreno más bajo, porque SRTM y otros DEM registran la superficie del agua.
+- **River**: ríos a lo largo de la red de drenaje, con pendiente, corriente, rápidos y espuma. El *Water Level* sigue llenando lagos por debajo de él (bájalo bajo el terreno para tener solo ríos).
+
+La malla se construye a partir de la propia malla del terreno, solo donde hay agua, con un margen que queda oculto bajo la orilla.
+
+**Hidráulica del modo River** (`core/river.py`):
+- Red de drenaje D8 sobre el DEM con las depresiones rellenadas (*Priority-Flood*, Barnes et al. 2014): el flujo atraviesa los hoyos del DEM y las superficies planas de los embalses.
+- *Through Flow*: el río principal entra por un borde y sale por el punto más bajo del borde, con todo su caudal (la cuenca de un río suele quedar fuera del área). Se traza por el fondo del valle, también a través de embalses planos.
+- Ancho por geometría hidráulica (w = 3 Q^0.5, Leopold & Maddock 1953); calado y velocidad por **Manning** (*Bed Roughness* = n), con la pendiente limitada en cascadas, donde Manning deja de valer (Rickenmann 2001).
+- **Número de Froude** Fr = v/√(g·d): por encima de 1 (régimen supercrítico) aparecen aguas blancas. Un torrente de montaña espumea solo; un río de llanura queda liso. La espuma viaja aguas abajo y se diluye en las confluencias según el caudal.
+- Un río ahogado por un lago se frena (mismo caudal por una sección más profunda) y pierde sus rápidos.
+
+Atributos del agua: `RTG_Water_Depth`, `RTG_Water_Velocity` (m/s, x este, y norte), `RTG_Water_Flow_Coords` (s a lo largo de la corriente, n a lo ancho, peso del río), `RTG_Water_Whitewater`, `RTG_Water_Foam`.
 
 Material "RTG Water Surface" (EEVEE y Cycles):
 - color y transparencia según la profundidad (absorción de Beer‑Lambert, control *Clarity*);
-- ondulación estirada en el sentido de la corriente y animada con el frame;
-- espuma en la orilla.
+- **flow map de dos fases** (Vlachos 2010): ondas y vetas de espuma texturizadas en coordenadas de corriente (s, n), así que siguen las curvas del río, y arrastradas por la velocidad local sin estirarse nunca;
+- **animación en bucle perfecto**: el periodo divide el rango de frames de la escena, y la evolución del patrón recorre un círculo en ruido 4D una vez por bucle. Unos drivers leen el rango de frames y los fps, así que el bucle se adapta si cambian;
+- aguas blancas en rápidos, vetas de espuma aguas abajo, remolinos que alisan o rizan parches de la corriente, ráfagas de viento (*Wind Gusts*) y espuma en la orilla;
+- las ondas más pequeñas que un píxel siguen difuminando el reflejo (la rugosidad sigue a la altura de las ondas).
 
 En el terreno, el material añade una franja mojada sobre la línea del agua y un tono de limo bajo ella.
 

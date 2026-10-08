@@ -52,6 +52,7 @@ from .scene_setup import (
     set_haze_visibility, place_camera, apply_render_preset,
 )
 from ..core.water import build_water_mesh, close_water_volume, estimate_water_level, estimate_flow_azimuth
+from ..core.river import RiverParams, analyze_river
 from ..core.geology import plan_surface_terms
 from .properties import TERRAIN_SETTINGS
 
@@ -85,6 +86,9 @@ MASK_VIEW_ATTRIBUTE = "RTG_Mask_View"
 # Weight-paint-like ramp: 0 blue, 0.25 cyan, 0.5 green, 0.75 yellow, 1 red (sRGB)
 _HEAT_STOPS = np.array([0.0, 0.25, 0.5, 0.75, 1.0])
 _HEAT_RGB = np.array([[0, 0, 1], [0, 1, 1], [0, 1, 0], [1, 1, 0], [1, 0, 0]], dtype=np.float32)
+
+# Last river analysis: (grid, params, RiverField); live sliders and rescaling reuse it
+_RIVER_CACHE: list = []
 
 # Debounced live updates: slider drags only queue work, done once the drag pauses
 LIVE_DEBOUNCE_S = 0.2
@@ -210,18 +214,33 @@ def sync_scale_dependents(obj, grid: ElevationGrid, props, mesh_scale: float, ob
         update_rocks(rocks, mesh_scale)
 
 
-def rebuild_water(water, grid: ElevationGrid, props, mesh_scale: float, obj_scale: float):
-    """Rebuild the water mesh for its stored level and the current terrain scale."""
+def river_for_grid(grid: ElevationGrid, props):
+    """River network and hydraulics for the River water mode (None for lakes only)."""
+    if props.water_mode != "RIVER":
+        return None
+    params = RiverParams(
+        discharge_m3s=props.river_discharge_m3s, min_area_km2=props.river_min_area_km2,
+        manning_n=props.river_roughness, through_flow=props.river_through_flow,
+    )
+    if not _RIVER_CACHE or _RIVER_CACHE[0] is not grid or _RIVER_CACHE[1] != params:
+        _RIVER_CACHE[:] = [grid, params, analyze_river(grid, params)]
+    return _RIVER_CACHE[2]
+
+
+def rebuild_water(water, grid: ElevationGrid, props, mesh_scale: float, obj_scale: float) -> bool:
+    """Rebuild the water mesh for its stored level, the water mode and the current terrain scale."""
     level_m = float(water.get("rtg_water_level_m", estimate_water_level(grid.elevation)))
-    data = build_water_mesh(grid, level_m, mesh_scale, props.vertical_scale, props.center_mesh)
+    data = build_water_mesh(grid, level_m, mesh_scale, props.vertical_scale, props.center_mesh,
+                            river=river_for_grid(grid, props))
     if data is None:
-        return
+        return False
     if props.water_volume:
         # Floor 5 m below the lowest ground, hidden under the terrain
         data = close_water_volume(data, -5.0 * props.vertical_scale * mesh_scale)
     write_water_mesh(water, data, mesh_scale * obj_scale)
     if water.active_material:
         set_volume_mode(water.active_material, props.water_volume)
+    return True
 
 
 def update_active_water_quick(context):
@@ -265,6 +284,9 @@ MASK_VIEW_ATTRIBUTE = "RTG_Mask_View"
 # Weight-paint-like ramp: 0 blue, 0.25 cyan, 0.5 green, 0.75 yellow, 1 red (sRGB)
 _HEAT_STOPS = np.array([0.0, 0.25, 0.5, 0.75, 1.0])
 _HEAT_RGB = np.array([[0, 0, 1], [0, 1, 1], [0, 1, 0], [1, 1, 0], [1, 0, 0]], dtype=np.float32)
+
+# Last river analysis: (grid, params, RiverField); live sliders and rescaling reuse it
+_RIVER_CACHE: list = []
 
 # Debounced live updates: slider drags only queue work, done once the drag pauses
 LIVE_DEBOUNCE_S = 0.2
@@ -510,6 +532,12 @@ def _run_pending_updates():
             update_object_masks(obj, grid, props, dynamic_only=bool(has_static))
         elif kind == "rocks":
             update_object_geology(scene, obj, grid)
+        elif kind == "water":
+            water = find_water(obj)
+            if water is not None:
+                mesh_scale, obj_scale = compute_scale_factors(props, scene, grid.width_m, grid.height_m)
+                rebuild_water(water, grid, props, mesh_scale, obj_scale)
+                store_settings_on_object(obj, props)
     return None
 
 
@@ -569,6 +597,13 @@ def update_active_material_quick(context):
         terms = tuple(t for t in mat.get("rtg_terms", "").split(",") if t)
         apply_terrain_material(obj, mesh_scale * obj_scale, props.material_displacement, terms, props.material_quality)
         store_settings_on_object(obj, props)
+
+
+def update_active_river_quick(context):
+    """Live-update callback for the river sliders (debounced: the network analysis is not instant)."""
+    obj = get_active_terrain(context)
+    if obj is not None and find_water(obj) is not None:
+        schedule_live_update("water", context)
 
 
 def update_active_haze_quick(context):
@@ -883,12 +918,15 @@ if BLENDER_AVAILABLE:
                 self.report({'ERROR'}, "This terrain has no stored elevation data; generate it again.")
                 return {'CANCELLED'}
             level = props.water_level_m
-            if build_water_mesh(grid, level) is None:
-                self.report({'WARNING'}, f"Nothing lies below {level:.0f} m; use the eyedropper to estimate the level.")
+            if build_water_mesh(grid, level, river=river_for_grid(grid, props)) is None:
+                if props.water_mode == "RIVER":
+                    self.report({'WARNING'}, "No river found; lower Channel Area or raise the Water Level.")
+                else:
+                    self.report({'WARNING'}, f"Nothing lies below {level:.0f} m; use the eyedropper to estimate the level.")
                 return {'CANCELLED'}
 
             new_water = find_water(terrain) is None
-            water = ensure_water_object(terrain, context.scene.render.fps / context.scene.render.fps_base)
+            water = ensure_water_object(terrain, context.scene)
             water["rtg_water_level_m"] = level
             mesh_scale, obj_scale = compute_scale_factors(props, context.scene, grid.width_m, grid.height_m)
             rebuild_water(water, grid, props, mesh_scale, obj_scale)

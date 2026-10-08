@@ -28,6 +28,7 @@ TERRAIN_SETTINGS = (
     "plant_density_threshold", "generate_color_attribute",
     "geology_source", "default_rock", "create_material", "material_displacement",
     "masks_as_vertex_groups", "terrain_detail", "water_level_m", "water_volume",
+    "water_mode", "river_discharge_m3s", "river_min_area_km2", "river_roughness", "river_through_flow",
 )
 
 
@@ -68,6 +69,10 @@ if BLENDER_AVAILABLE:
     def _on_water_volume_updated(self, context):
         from .operators import update_active_water_quick
         update_active_water_quick(context)
+
+    def _on_river_updated(self, context):
+        from .operators import update_active_river_quick
+        update_active_river_quick(context)
 
     def _on_displacement_updated(self, context):
         from .operators import update_active_material_quick
@@ -413,6 +418,55 @@ if BLENDER_AVAILABLE:
             description="Fill the water with a physically sized volume (absorption and silt scattering by real depth). Best in Cycles; off: lighter depth shading for EEVEE",
             default=False,
             update=_on_water_volume_updated,
+        )
+
+        water_mode: EnumProperty(
+            name="Water",
+            description="Kind of water surface built by Water Surface",
+            items=[
+                ("LAKE", "Lake", "Flat surface at the Water Level (lakes, reservoirs, sea)"),
+                ("RIVER", "River", "Rivers along the drainage network, sloping with the terrain, with current, rapids and foam; "
+                                   "the Water Level still fills lakes below it (set it under the terrain for rivers only)"),
+            ],
+            default="LAKE",
+            update=_on_river_updated,
+        )
+
+        river_discharge_m3s: FloatProperty(
+            name="Discharge (m³/s)",
+            description="Flow of the main river (mountain torrent 1-20, river 50-500, large river 1000+). Sets width, depth and speed",
+            default=20.0,
+            min=0.1,
+            max=50000.0,
+            soft_max=5000.0,
+            update=_on_river_updated,
+        )
+
+        river_min_area_km2: FloatProperty(
+            name="Channel Area (km²)",
+            description="Upstream area where streams start (lower: more tributaries)",
+            default=0.5,
+            min=0.01,
+            max=1000.0,
+            soft_max=50.0,
+            update=_on_river_updated,
+        )
+
+        river_roughness: FloatProperty(
+            name="Bed Roughness",
+            description="Manning's n of the bed: 0.03 smooth sand, 0.04 gravel, 0.05-0.07 boulders (slower, deeper, calmer)",
+            default=0.035,
+            min=0.015,
+            max=0.15,
+            precision=3,
+            update=_on_river_updated,
+        )
+
+        river_through_flow: BoolProperty(
+            name="Through Flow",
+            description="The main river carries its full discharge across the terrain (its catchment lies mostly outside the area)",
+            default=True,
+            update=_on_river_updated,
         )
 
         material_quality: EnumProperty(
